@@ -2,7 +2,7 @@
 
 **Status: exploratory prototypes (September 2026).** These are the Stan programs behind the sequential prior-transfer pipeline described under *Borrowing (II)* in the accompanying research plan. They implement the baseline that Article II of the planned dissertation replaces: a two-phase fit in which a trial source is modelled first and its posterior is reduced to independent priors for a routine-care fit. They are published so that the model described in the plan can be read as code. They are not the multisource-exchangeability extension, which does not yet exist.
 
-No data are included. The trial source is the CATT data set (Comparison of AMD Treatments Trials), obtainable from its public repository; the routine-care source is the HUS doctoral study cohort, which cannot be redistributed. The label `Finnish` / `finland` in file and variable names is the identifier used for the HUS cohort in the code.
+No data are included. The trial source is the CATT data set (Comparison of AMD Treatments Trials), obtainable from its public repository; the routine-care source is the HUS doctoral study cohort — routine-care records collected for a clinician's doctoral study at Helsinki University Hospital — which cannot be redistributed. The label `Finnish` / `finland` in file and variable names is the identifier used for the HUS cohort in the code.
 
 ## Files
 
@@ -55,7 +55,7 @@ Each marker reading is a noisy binary observation of the corresponding component
 
 ### Drop-out (Phase 2 only)
 
-Routine care ends follow-up for reasons that may depend on the disease. The routine-care model adds an absorbing fifth state with a class-specific log-intensity from each fluid state, `beta_dropout[c, 1..4]`, and its own age effects. The pipeline sets `is_dropout = 1` on a patient's terminal visit when follow-up ended for a recorded reason; at that visit the emission puts all mass on state 5. A patient without the indicator is right-censored at the last visit, and because state 5 is excluded at every observed visit, the probability of not having dropped out is part of the likelihood: drop-out is informative, not ignored. The trial model has no drop-out state, since follow-up there is fixed by protocol.
+Routine care ends follow-up for reasons that may depend on the disease. The routine-care model adds an absorbing fifth state with a class-specific log-intensity from each fluid state, `beta_dropout[c, 1..4]`, and its own age effects. The pipeline sets `is_dropout = 1` on a patient's terminal visit when follow-up ended for a recorded reason; at that visit the emission puts all mass on state 5. A patient without the indicator is right-censored at the last visit, and because state 5 is excluded at every observed visit, the probability of not having dropped out is part of the likelihood: drop-out is informative, not ignored. The trial program has no drop-out state because the exploratory trial cohort — the as-needed arm, chosen as the regimen closest to routine care — was defined without informative drop-out. A production fit on the full trial would add one and treat trial attrition as Phase 2 treats drop-out.
 
 ### Likelihood and computation
 
@@ -67,7 +67,7 @@ Two caches keep the cost manageable: emission log-probabilities are computed onc
 
 The procedure the two programs are designed for. Steps 1 and 4 are the programs in this repository; steps 2 and 3 are R code held outside it.
 
-1. **Fit Phase 1** on the trial source. The exploratory runs used the monthly-dosing arm, two years of four-weekly visits, three classes, and asymmetric initial values (slow / moderate / fast classes) to encourage separation.
+1. **Fit Phase 1** on the trial source. The exploratory runs used the as-needed (PRN) arm — the regimen closest to routine care, under a cohort definition with no informative drop-out — two years of monthly visits, three classes, and asymmetric initial values (slow / moderate / fast classes) to encourage separation.
 2. **Align class labels.** Chains and iterations may permute the classes. The pipeline picks the maximum-a-posteriori draw as pivot and, for each draw, chooses the permutation of classes that minimises the squared distance of `beta_fluid` to the pivot (pivotal reordering). The same permutation is applied to `pi_init` and `theta_class`. Convergence diagnostics (R-hat, bulk ESS) are computed on the aligned draws. The age effects need no alignment because they are shared across classes.
 3. **Reduce to priors.** Elementwise means and standard deviations of the aligned `beta_fluid` and of `gamma_age_fluid` become independent normal priors. The mean of each class's `pi_init` is scaled by a fixed pseudo-count of 10 to give Dirichlet parameters.
 4. **Fit Phase 2** on the routine-care source with those priors. Class prevalence, reading error and the drop-out process are estimated afresh, without transfer.
@@ -85,7 +85,7 @@ What this transfer does and does not do matters for the research plan. It carrie
 | "class-specific over three latent classes, age enters as group effects, marker error by ordered false- and true-positive logits" | `beta_fluid[N_classes, 8]`, `gamma_age_fluid`, `ordered[2] theta_*_logit` |
 | "sequential transfer: the trial is fitted first, label switching resolved by permutation alignment, aligned posterior reduced to independent normal priors for the routine-care fit, which alone models drop-out" | Steps 1–4 above; `prior_*` data in Phase 2; state 5 |
 | "Pooling strength is fixed and untestable" | Prior standard deviations are data, not parameters |
-| Article II: per-intensity mixture prior, marginalised indicator, estimated weight; ordering constraint for class identity | Not implemented; planned |
+| Article II: per-intensity mixture prior, marginalised indicator, estimated weight; ordering constraint fixing class labels | Not implemented; planned |
 | Article III: random effects on log-intensities, out-of-source calibration | Not implemented; planned |
 | Article IV: treatment rules, forward simulation | Not implemented; the prototypes contain no treatment covariate |
 
@@ -96,7 +96,7 @@ What this transfer does and does not do matters for the research plan. It carrie
 - **Drop-out dating.** The drop-out visit is the patient's real terminal visit, so its fluid readings are discarded and the transition into state 5 is dated within the last observed interval. A cleaner convention keeps the terminal readings and appends a pseudo-visit for absorption at a chosen interval after them.
 - **Visit clustering.** The pipeline merges routine-care visits less than a week apart, comparing each visit with its immediate predecessor, so a chain of close visits can be merged into one cluster spanning more than a week. Comparing with the first visit of the current cluster bounds the span.
 - **Age groups.** Three groups (≤ 75, 76–85, ≥ 86) with the first as reference; missing age is currently assigned to the middle group.
-- **Visit scheduling.** Routine-care visit times are treated as given (`nogap`). The full routine-care model includes a treat-and-extend scheduling component in which the gap to the next visit depends on the fluid state; it is not included here.
+- **Visit scheduling.** Routine-care visit times are treated as given (`nogap`), which is valid when the next gap depends only on readings already observed and not on the latent state. The full routine-care model includes a treat-and-extend scheduling component in which the gap to the next visit depends on the fluid state; it is not included here.
 - **Class identity across sources** is carried only by the transferred priors.
 
 ## Data expected by the Stan programs
